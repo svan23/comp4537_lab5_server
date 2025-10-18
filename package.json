@@ -1,0 +1,13 @@
+{
+  "name": "lab5-server2-sqlite",
+  "version": "1.0.0",
+  "description": "Plain Node + sqlite3 (no Express) for Lab 5",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "sqlite3": "^5.1.7"
+  }
+}
+
