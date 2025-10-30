@@ -40,6 +40,7 @@ class SQLiteServer {
   }
 
   // Seed the database with initial patient data
+  // Return Promise that resolves with {inserted: N}
   seed() {
     return new Promise((resolve, reject) => {
       const rows = [
@@ -51,7 +52,7 @@ class SQLiteServer {
 
       // Build a single INSERT ... VALUES (...), (...), (...), (...)
       const placeholders = rows.map(() => "(?, ?)").join(", ");
-      const flatParams = rows.flat();
+      const flatParams = rows.flat(); //merge into 1D array
 
       const sql = `INSERT INTO patient (name, dateOfBirth) VALUES ${placeholders};`;
 
@@ -70,7 +71,7 @@ class SQLiteServer {
     });
   }
 
-  // Run an INSERT query and return Error obj or lastID and changes
+  // Run an INSERT query and return Error obj or {changes and lastID}
   runInsert(sql) {
     return new Promise((resolve, reject) => {
       this.db.run(sql, function (err) {
@@ -84,12 +85,14 @@ class SQLiteServer {
   }
 
   // ------------ Handlers ------------
+ // Handle OPTIONS preflight,  caching for 10 minutes
   handleOptions(req, res) {
     res.writeHead(204, cors({ "Access-Control-Max-Age": "600" }));
     res.end();
   }
 
   // GET /api/v1/sql/{SQL}
+  // Execute a SELECT query, return rows as JSON
   async handleGetSql(req, res, pathname) {
     const parts = pathname.split("/").filter(Boolean);
     if (parts.length < 4)
@@ -97,12 +100,12 @@ class SQLiteServer {
 
     let sql;
     try {
-      sql = decodeURIComponent(parts.slice(3).join("/"));
+      sql = decodeURIComponent(parts.slice(3).join("/"));  //Get everything after /api/v1/sql/
     } catch {
       return sendJSON(res, 400, { error: "Badly encoded SQL." });
     }
 
-    if (isForbidden(sql))
+    if (isForbidden(sql)) //SELECT and INSERT only
       return sendJSON(res, 403, { error: "Forbidden statement." });
     if (!isSelect(sql))
       return sendJSON(res, 400, { error: "GET only allows SELECT." });
@@ -110,8 +113,8 @@ class SQLiteServer {
       return sendJSON(res, 400, { error: "Query must reference 'patient'." });
 
     try {
-      const rows = await this.runSelect(sql);
-      return sendJSON(res, 200, { rows });
+      const rows = await this.runSelect(sql);  //Execute the SELECT and return array of rows
+      return sendJSON(res, 200, { rows }); //Return rows in JSON
     } catch (e) {
       return sendJSON(res, 400, { error: e.message });
     }
@@ -120,31 +123,32 @@ class SQLiteServer {
   async handlePostSql(req, res) {
     let raw;
     try {
-      raw = await readBody(req);
+      raw = await readBody(req); //Read full req body as string
     } catch (e) {
       return sendJSON(res, 413, { error: e.message || "Body too large" });
     }
 
     let payload;
+    // turn JSON-string req body as JS object
     try {
-      payload = JSON.parse(raw || "{}");
+      payload = JSON.parse(raw || "{}"); 
     } catch {
       return sendJSON(res, 400, { error: "Invalid JSON body." });
     }
 
     const sql = String(payload.query || "");
-    if (!sql.trim())
+    if (!sql.trim()) //Empty string is falsey
       return sendJSON(res, 400, { error: "Missing 'query' field." });
-    if (isForbidden(sql))
+    if (isForbidden(sql)) //Only allow INSERT on 'patient' table
       return sendJSON(res, 403, { error: "Forbidden statement." });
-    if (!isInsert(sql))
+    if (!isInsert(sql)) 
       return sendJSON(res, 400, { error: "POST only allows INSERT." });
     if (!touchesPatient(sql))
       return sendJSON(res, 400, { error: "Query must reference 'patient'." });
 
     try {
       const result = await this.runInsert(sql);
-      return sendJSON(res, 200, { ok: true, ...result });
+      return sendJSON(res, 200, { ok: true, ...result }); //Return affectedRows and insertId
     } catch (e) {
       return sendJSON(res, 400, { error: e.message });
     }

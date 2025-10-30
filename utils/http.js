@@ -10,7 +10,9 @@ function cors(extra = {}) {``
   };
 }
 
-// Read the full body of a POST request, up to `limit` bytes
+// Read the full body of a POST request, up to `limit= 1MB` bytes
+//To keep server from crashing on large bodies
+//Return Promise that resolves with body as string
 function readBody(req, limit = 1_000_000) {
   return new Promise((resolve, reject) => {
     let size = 0;
