@@ -39,6 +39,29 @@ class SQLiteServer {
     });
   }
 
+  // Seed the database with initial patient data
+  seed() {
+    return new Promise((resolve, reject) => {
+      const rows = [
+        ["Sara Brown", "1901-01-01 00:00:00"],
+        ["John Smith", "1941-01-01 00:00:00"],
+        ["Jack Ma", "1961-01-30 00:00:00"],
+        ["Elon Musk", "1999-01-01 00:00:00"],
+      ];
+
+      // Build a single INSERT ... VALUES (...), (...), (...), (...)
+      const placeholders = rows.map(() => "(?, ?)").join(", ");
+      const flatParams = rows.flat();
+
+      const sql = `INSERT INTO patient (name, dateOfBirth) VALUES ${placeholders};`;
+
+      this.db.run(sql, flatParams, function (err) {
+        if (err) return reject(err);
+        resolve({ inserted: this.changes || rows.length });
+      });
+    });
+  }
+
   // ------------ DB ops ------------
   // Run a SELECT query and return Error obj or all rows in array
   runSelect(sql) {
@@ -127,6 +150,20 @@ class SQLiteServer {
     }
   }
 
+  // POST /api/v1/seed
+  async handleSeed(req, res) {
+    try {
+      const result = await this.seed();
+      return sendJSON(res, 200, {
+        ok: true,
+        message: "Database seeded successfully.",
+        ...result,
+      });
+    } catch (e) {
+      return sendJSON(res, 400, { error: e.message });
+    }
+  }
+
   // ------------ Request Router ------------
   handleRequest(req, res) {
     const { pathname } = url.parse(req.url);
@@ -141,6 +178,10 @@ class SQLiteServer {
 
     if (req.method === "POST" && pathname === "/api/v1/sql") {
       return this.handlePostSql(req, res);
+    }
+
+    if (req.method === "POST" && pathname === "/api/v1/seed") {
+      return this.handleSeed(req, res);
     }
 
     if (req.method === "GET" && pathname === "/") {
