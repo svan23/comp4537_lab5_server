@@ -64,15 +64,33 @@ class SQLiteServer {
   }
 
   // ------------ DB ops ------------
+  // Ensure the patient table exists before running queries
+  ensureTableExists() {
+    return new Promise((resolve, reject) => {
+      this.db.run(
+        `
+        CREATE TABLE IF NOT EXISTS patient (
+          patientid   INTEGER PRIMARY KEY AUTOINCREMENT,
+          name        VARCHAR(100) NOT NULL,
+          dateOfBirth DATETIME
+        );
+      `,
+        (err) => (err ? reject(err) : resolve())
+      );
+    });
+  }
+
   // Run a SELECT query and return Error obj or all rows in array
-  runSelect(sql) {
+  async runSelect(sql) {
+    await this.ensureTableExists();
     return new Promise((resolve, reject) => {
       this.db.all(sql, (err, rows) => (err ? reject(err) : resolve(rows)));
     });
   }
 
   // Run an INSERT query and return Error obj or {changes and lastID}
-  runInsert(sql) {
+  async runInsert(sql) {
+    await this.ensureTableExists();
     return new Promise((resolve, reject) => {
       this.db.run(sql, function (err) {
         if (err) return reject(err);
@@ -85,7 +103,7 @@ class SQLiteServer {
   }
 
   // ------------ Handlers ------------
- // Handle OPTIONS preflight,  caching for 10 minutes
+  // Handle OPTIONS preflight,  caching for 10 minutes
   handleOptions(req, res) {
     res.writeHead(204, cors({ "Access-Control-Max-Age": "600" }));
     res.end();
@@ -100,12 +118,13 @@ class SQLiteServer {
 
     let sql;
     try {
-      sql = decodeURIComponent(parts.slice(3).join("/"));  //Get everything after /api/v1/sql/
+      sql = decodeURIComponent(parts.slice(3).join("/")); //Get everything after /api/v1/sql/
     } catch {
       return sendJSON(res, 400, { error: "Badly encoded SQL." });
     }
 
-    if (isForbidden(sql)) //SELECT and INSERT only
+    if (isForbidden(sql))
+      //SELECT and INSERT only
       return sendJSON(res, 403, { error: "Forbidden statement." });
     if (!isSelect(sql))
       return sendJSON(res, 400, { error: "GET only allows SELECT." });
@@ -113,7 +132,7 @@ class SQLiteServer {
       return sendJSON(res, 400, { error: "Query must reference 'patient'." });
 
     try {
-      const rows = await this.runSelect(sql);  //Execute the SELECT and return array of rows
+      const rows = await this.runSelect(sql); //Execute the SELECT and return array of rows
       return sendJSON(res, 200, { rows }); //Return rows in JSON
     } catch (e) {
       return sendJSON(res, 400, { error: e.message });
@@ -131,17 +150,19 @@ class SQLiteServer {
     let payload;
     // turn JSON-string req body as JS object
     try {
-      payload = JSON.parse(raw || "{}"); 
+      payload = JSON.parse(raw || "{}");
     } catch {
       return sendJSON(res, 400, { error: "Invalid JSON body." });
     }
 
     const sql = String(payload.query || "");
-    if (!sql.trim()) //Empty string is falsey
+    if (!sql.trim())
+      //Empty string is falsey
       return sendJSON(res, 400, { error: "Missing 'query' field." });
-    if (isForbidden(sql)) //Only allow INSERT on 'patient' table
+    if (isForbidden(sql))
+      //Only allow INSERT on 'patient' table
       return sendJSON(res, 403, { error: "Forbidden statement." });
-    if (!isInsert(sql)) 
+    if (!isInsert(sql))
       return sendJSON(res, 400, { error: "POST only allows INSERT." });
     if (!touchesPatient(sql))
       return sendJSON(res, 400, { error: "Query must reference 'patient'." });
